@@ -1,0 +1,7 @@
+name = "sol_casa"
+main = "src/index.js"
+compatibility_date = "2024-02-23"
+#node_compat = true
+kv_namespaces = [
+    { binding = "SOLCASA", id = "417044f58c0b45f995250d93e43394d5" },
+]

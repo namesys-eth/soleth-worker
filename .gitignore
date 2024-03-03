@@ -1,0 +1,8 @@
+.vscode
+target
+node_modules/
+.DS_Store
+.dev.vars
+.wrangler
+scratch/
+.env
