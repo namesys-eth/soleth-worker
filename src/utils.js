@@ -30,15 +30,16 @@ export function randomRPC(APIS) {
 	return RPC[Math.floor(Math.random() * RPC.length)];
 }
 
-export async function setKV(kv, key, val, timer) {
-	console.log('KV Set:', key, val, timer);
-	await kv.put(key, val, { expirationTtl: timer > 60 ? timer : 60 });
+export async function setKV(kv, key, val, ttl) {
+	console.log('KV Set:', key, val, ttl);
+	await kv.put(key, val, { expirationTtl: ttl > 60 ? ttl : 60 });
 	return val;
 }
 
 export async function getKV(kv, key) {
-	const val = await kv.get(key);
-	return val ? val : false;
+	//const val = 
+	return await kv.get(key);
+	//return val ? val : false;
 }
 
 export async function signRecord(env, gateway, recType, result) {
@@ -53,39 +54,41 @@ export async function signRecord(env, gateway, recType, result) {
 	return sig.r + sig.yParityAndS.slice(2);
 }
 
-export async function proxySol(env, domain, recordType, timer) {
+export async function proxySol(env, domain, recordType, ttl) {
 	/*const key = (`${domain}/${recordType}`).replace('.', '_')
-    const value = await getKV(env.SOLCASA, key)
-    if (value) {
-        console.log("KV Used:", key, value)
-        return value;
-    }*/
+	const value = await getKV(env.SOLCASA, key)
+	if (value) {
+		console.log("KV Used:", key, value)
+		return value;
+	}*/
 	const rpc = randomRPC(env.RPC_URLS);
 	try {
 		const result = await fetch(`${SNS_PROXY}/record-v2/${domain}/${recordType}?rpc=${rpc}`, {
 			cf: {
-				cacheTtl: timer * 2,
+				cacheTtl: ttl * 2,
 				cacheEverything: true,
 			},
 		});
 		if (result.ok) {
 			const data = await result.json();
+			console.log("v2", recordType, domain, data.result)
 			return data.result.stale ? false : data.result.deserialized;
-			//return await setKV(env.SOLCASA, key, data, timer)
+			//return await setKV(env.SOLCASA, key, data, ttl)
 		}
 		throw new Error(result.statusText);
 	} catch (err) {
 		try {
 			const result = await fetch(`${SNS_PROXY}/record/${domain}/${recordType}?rpc=${rpc}`, {
 				cf: {
-					cacheTtl: timer * 2,
+					cacheTtl: ttl * 2,
 					cacheEverything: true,
 				},
 			});
 			if (result.ok) {
 				const data = await result.json();
+				console.log("v1", recordType, domain, data.result)
 				return data.result;
-				//return await setKV(env.SOLCASA, key, data, timer)
+				//return await setKV(env.SOLCASA, key, data, ttl)
 			}
 			throw new Error(result.statusText);
 		} catch (error) {
@@ -93,4 +96,38 @@ export async function proxySol(env, domain, recordType, timer) {
 			return false;
 		}
 	}
+}
+
+export const getContent = async (env, domain, ttl) => {
+	const key = (`CONTENT_${domain}`).replace('.', '_')
+	let result = await getKV(env.SOLCASA, key)
+	if (result !== null) {
+		console.log("KV Used:", key, result)
+		return result;
+	}
+	result = await proxySol(env, domain, "IPFS", ttl)
+	if (result) {
+		if (result.startsWith('k')) {
+			result = `ipns://${result}`;
+		} else {
+			result = `ipfs://${result}`;
+		}
+	} else {
+		result = await proxySol(env, domain, "ARWV", ttl)
+		if (result) {
+			result = `ar://${value}`
+		} else {
+			result = await proxySol(env, domain, "SHDW", ttl)
+			if (result) {
+				result = `shdw://${value}`
+			} else {
+				result = await proxySol(env, domain, "url", ttl)
+				if (result) {
+					result = atob(result)
+				}
+			}
+		}
+	}
+	console.log(result, "__res", domain)
+	return await setKV(env.SOLCASA, key, result, ttl)
 }

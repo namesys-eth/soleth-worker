@@ -1,14 +1,15 @@
 import { privateKeyToAccount } from 'viem/accounts';
-import { randomRPC, setKV, getKV, signRecord, proxySol, recordMap } from './utils';
+import { randomRPC, setKV, getKV, signRecord, proxySol, recordMap, getContent } from './utils';
 import { getCoderByCoinName } from '@ensdomains/address-encoder';
 import { hexToBytes } from '@ensdomains/address-encoder/utils';
 import { getAddress as toChecksumAddr, toHex } from 'viem';
 
 //Home page cache timer, set 1 hour
 const HOME_CACHE = 12;
-const HOME_PAGE = 'https://namesys-eth.github.io/'; // with trailing slash
+const HOME_PAGE = 'https://namesys-eth.github.io'; // with trailing slash
 // Per record cache timer,
 const RECORD_CACHE = 12;
+const ERROR_CACHE = 12;
 // Gateway Web page cache
 const PAGE_CACHE = 12;
 const DATA_CACHE = 12;
@@ -19,15 +20,15 @@ const X404_CACHE = 13;
 const cache = caches.default;
 const utf8Encoder = new TextEncoder();
 
-async function cachedOutput(key, res, timer) {
+async function cachedOutput(cacheKey, res, timer) {
 	res.headers.append('Cache-Control', `max-age=${timer ? timer : DEFAULT_CACHE}`);
 	res.headers.append('Date', new Date().toUTCString());
 	//const tag = await crypto.subtle.digest("SHA-1", utf8Encoder.encode(Date()))//.then(t=>{})
 	//res.headers.append("ETag", `"${Buffer.from(tag.slice(10)).toString('hex')}"`)
 	res.headers.append('Access-Control-Allow-Origin', '*');
 	if (timer) {
-		await cache.put(key, res.clone());
-		console.log('Cache Set:', timer, key.url);
+		await cache.put(cacheKey, res.clone());
+		console.log('Cache Set:', timer, cacheKey);
 	}
 	return res;
 }
@@ -35,10 +36,10 @@ async function cachedOutput(key, res, timer) {
 export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
-		const cacheKey = new Request(url.toString());
+		const cacheKey = url.href.split("?")[0] //new Request(url.toString());
 		let response = await cache.match(cacheKey);
 		if (response) {
-			console.log('Cache Hit:', request.url);
+			console.log('Cache Hit:', cacheKey);
 			return response;
 		}
 		const rpc = randomRPC(env.RPC_URLS);
@@ -91,7 +92,7 @@ export default {
 		const hostLen = url.hostname.split('.').length;
 		if (hostLen < 3) {
 			if (url.pathname === '/favicon.ico') {
-				response = await fetch(`${HOME_PAGE}avatar.png`, {
+				response = await fetch(`${HOME_PAGE}/avatar.png`, {
 					cf: {
 						cacheTtl: HOME_CACHE * 20,
 						cacheEverything: true,
@@ -113,39 +114,47 @@ export default {
 			return cachedOutput(cacheKey, response, HOME_CACHE);
 		}
 		if (hostLen === 3) {
-			const key = `${url.hostname}`.replace('.', '_');
-			let value = await getKV(env.SOLCASA, key);
-			if (!value) {
-				value = await proxySol(env, _domain, 'IPFS', 15);
-				if (value) {
-					if (value.startsWith('k')) {
-						value = `ipns://${value}`;
-					} else {
-						value = `ipfs://${value}`;
+			const _domain = url.hostname.split(".").slice(0, 2).join(".")
+			const result = await getContent(env, _domain, HOME_CACHE);
+			if (result) {
+				const res = result.split("://")
+				let gateway = ""// TODO: set default profile here, or at default
+				switch (res[0]) {
+					case "ipfs":
+						gateway = `https://cloudflare-ipfs.com/ipfs/${res[1]}`
+						break
+					case "ipns":
+						gateway = `https://cloudflare-ipfs.com/ipns/${res[1]}`
+						break
+					case "ar":
+						gateway = `https://arweave.net/${res[1]}`
+						break
+					case "shdw":
+						gateway = `https://shdw-drive.genesysgo.net/${res[1]}`
+						break
+					case "https":
+						return Response.redirect(`${result}${url.pathname}${url.search}`, 307)
+					default:
+						gateway = HOME_PAGE // set PROFILE here
+						break
+					//return cachedOutput(cacheKey, Response.json({ error: 'Record Not Set' }, { status: 404 }), ERROR_CACHE)
+				}
+				response = await fetch(`${gateway}${url.pathname}${url.search}`, {
+					cf: {
+						cacheTtl: HOME_CACHE * 2,
+						cacheEverything: true,
+					},
+				});
+				return cachedOutput(cacheKey, new Response(response.body, {
+					headers: {
+						'Content-Type': response.headers.get('Content-Type'),
 					}
-				}
-				if (!value) {
-					value = await proxySol(env, _domain, 'ARWV', 15);
-					if (value) {
-						value = `ar://${value}`;
-					}
-				}
-				if (!value) {
-					value = await proxySol(env, _domain, 'url', 15);
-					//return Response.redirect(value, 302)
-				}
-				if (value) {
-					setKV(env.SOLCASA, key, value, 24);
-				}
+				}), HOME_CACHE); // 10 seconds
 			}
-			response = await fetch(value, {
-				cf: {
-					cacheTtl: HOME_CACHE * 2,
-					cacheEverything: true,
-				},
-			});
-			return cachedOutput(cacheKey, new Response(response.body, { headers }), 10); // 10 seconds
+			return cachedOutput(cacheKey, Response.json({ error: 'Record Not Set' }, { status: 404 }), ERROR_CACHE)
 		}
-		return cachedOutput(cacheKey, Response.json({ error: 'Not Implemented' }, { status: 404 }), 21);
-	},
-};
+		// DEV: sub domain is not supported yet 
+		// No ssl to resolve/return this error 
+		return cachedOutput(cacheKey, Response.json({ error: 'Not Implemented' }, { status: 404 }), 60);
+	}
+}
