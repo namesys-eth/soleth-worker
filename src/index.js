@@ -6,6 +6,7 @@ import { getAddress as toChecksumAddr, toHex } from 'viem';
 
 //Home page cache timer, set 1 hour
 const HOME_CACHE = 12;
+
 const HOME_PAGE = 'https://namesys-eth.github.io'; // with trailing slash
 // Per record cache timer,
 const RECORD_CACHE = 12;
@@ -21,7 +22,7 @@ const cache = caches.default;
 const utf8Encoder = new TextEncoder();
 
 async function cachedOutput(cacheKey, res, timer) {
-	res.headers.append('Cache-Control', `max-age=${timer ? timer : DEFAULT_CACHE}`);
+	res.headers.append('Cache-Control', `max-age=${timer ? timer : DEFAULT_CACHE}, must-revalidate`);
 	res.headers.append('Date', new Date().toUTCString());
 	//const tag = await crypto.subtle.digest("SHA-1", utf8Encoder.encode(Date()))//.then(t=>{})
 	//res.headers.append("ETag", `"${Buffer.from(tag.slice(10)).toString('hex')}"`)
@@ -35,6 +36,7 @@ async function cachedOutput(cacheKey, res, timer) {
 
 export default {
 	async fetch(request, env, ctx) {
+		//return new Response("", { headers: { location: "https://sns.id" }, status: 307 })
 		const url = new URL(request.url);
 		const cacheKey = url.href.split("?")[0] //new Request(url.toString());
 		let response = await cache.match(cacheKey);
@@ -121,10 +123,10 @@ export default {
 				let gateway = ""// TODO: set default profile here, or at default
 				switch (res[0]) {
 					case "ipfs":
-						gateway = `https://cloudflare-ipfs.com/ipfs/${res[1]}`
+						gateway = `https://ipfs.io/ipfs/${res[1]}`
 						break
 					case "ipns":
-						gateway = `https://cloudflare-ipfs.com/ipns/${res[1]}`
+						gateway = `https://ipfs.io/ipns/${res[1]}`
 						break
 					case "ar":
 						gateway = `https://arweave.net/${res[1]}`
@@ -133,28 +135,47 @@ export default {
 						gateway = `https://shdw-drive.genesysgo.net/${res[1]}`
 						break
 					case "https":
-						return Response.redirect(`${result}${url.pathname}${url.search}`, 307)
-					default:
-						gateway = HOME_PAGE // set PROFILE here
-						break
+						return Response.redirect(result, 307)
+					default: {
+						console.log("____REDirect")
+						return Response.redirect(`https://www.sns.id/domain?domain=${_domain.split(".")[0]}`, 307)
+					}
+					//gateway = HOME_PAGE // set PROFILE here
+					//break
 					//return cachedOutput(cacheKey, Response.json({ error: 'Record Not Set' }, { status: 404 }), ERROR_CACHE)
 				}
+
 				response = await fetch(`${gateway}${url.pathname}${url.search}`, {
 					cf: {
 						cacheTtl: HOME_CACHE * 2,
 						cacheEverything: true,
 					},
 				});
+				console.log(response.status, "__status")
 				return cachedOutput(cacheKey, new Response(response.body, {
 					headers: {
 						'Content-Type': response.headers.get('Content-Type'),
+						'Access-Control-Allow-Credentials': "false",
+						'Access-Control-Allow-Headers': "Content-Type,Range,User-Agent,X-Requested-With",
+						'Access-Control-Allow-Methods': "GET, HEAD, OPTIONS",
+						'Access-Control-Expose-Headers': "Content-Length,Content-Range,X-Chunked-Output,X-Stream-Output",
+						'Clear-Site-Data': "cookies",
+						'Content-Security-Policy': "frame-ancestors 'self'",
+						'Cross-Origin-Resource-Policy': "cross-origin",
+						'Permissions-Policy': "interest-cohort=()",
+						'Referrer-Policy': "strict-origin-when-cross-origin",
+						Server: "sol.casa",
+						'Strict-Transport-Security': "max-age=31536000; includeSubDomains; preload",
+						'X-Content-Type-Options': "nosniff",
+						'X-Frame-Options': "SAMEORIGIN",
+						'X-True-Host': `${_domain}.casa`,
+						'X-Xss-Protection': "1; mode=block"
 					}
-				}), HOME_CACHE); // 10 seconds
+				}), PAGE_CACHE);
 			}
-			return cachedOutput(cacheKey, Response.json({ error: 'Record Not Set' }, { status: 404 }), ERROR_CACHE)
+			return Response.redirect(`https://www.sns.id/domain?domain=${_domain.split(".")[0]}`, 307)
 		}
-		// DEV: sub domain is not supported yet 
-		// No ssl to resolve/return this error 
-		return cachedOutput(cacheKey, Response.json({ error: 'Not Implemented' }, { status: 404 }), 60);
+		return cachedOutput(cacheKey, Response.json({ error: 'Record Not Found' }, { status: 404 }), ERROR_CACHE)
+		//return cachedOutput(cacheKey, Response.json({ error: 'Not Implemented' }, { status: 404 }), 60);
 	}
 }
