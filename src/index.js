@@ -1,5 +1,5 @@
 import { privateKeyToAccount } from 'viem/accounts';
-import { randomRPC, setKV, getKV, signRecord, proxySol, recordMap, getContent } from './utils';
+import { randomRPC, setKV, getKV, signRecord, getRecord, recordMap, getContent } from './utils';
 import { getCoderByCoinName } from '@ensdomains/address-encoder';
 import { hexToBytes } from '@ensdomains/address-encoder/utils';
 import { getAddress as toChecksumAddr, toHex } from 'viem';
@@ -61,7 +61,7 @@ export default {
 				if (rec === 'address' && recType) {
 					_path.pop();
 					_domain = _path.reverse().join('.');
-					data = await proxySol(env, _domain, recType, 15);
+					data = await getRecord(env, _domain, recType, 15);
 					if (data) {
 						// format & sign here
 						const addrCoder = getCoderByCoinName(recType.toLowerCase());
@@ -75,7 +75,7 @@ export default {
 				if (rec === 'text' && recType) {
 					_path.pop();
 					_domain = _path.reverse().join('.');
-					data = await proxySol(env, _domain, recType, 15);
+					data = await getRecord(env, _domain, recType, 15);
 					if (data) {
 						// format & sign here
 						await setKV(env.SOLCASA, key, data, DATA_CACHE * 2);
@@ -116,55 +116,55 @@ export default {
 		if (hostLen === 3) {
 			const _domain = url.hostname.split(".").slice(0, 2).join(".")
 			const result = await getContent(env, _domain, HOME_CACHE);
-			if (result) {
-				const res = result.split("://")
-				let gateway = ""// TODO: set default profile here, or at default
-				switch (res[0]) {
-					case "ipfs":
-						gateway = `https://ipfs.io/ipfs/${res[1]}`
-						break
-					case "ipns":
-						gateway = `https://ipfs.io/ipns/${res[1]}`
-						break
-					case "ar":
-						gateway = `https://arweave.net/${res[1]}`
-						break
-					case "shdw":
-						gateway = `https://shdw-drive.genesysgo.net/${res[1]}`
-						break
-					default:
-						return Response.redirect(result, 307)
-				}
-				response = await fetch(`${gateway}${url.pathname}${url.search}`, {
-					cf: {
-						cacheTtl: HOME_CACHE * 2,
-						cacheEverything: true,
-					},
-				});
-				if (response.status !== 200) {
-					return cachedOutput(cacheKey, Response.json({ error: response.status }, { status: response.status }), ERROR_CACHE)
-				}
-				return cachedOutput(cacheKey, new Response(response.body, {
-					headers: { // Thanks to eth.limo for proper headers
-						'Content-Type': response.headers.get('Content-Type'),
-						'Access-Control-Allow-Credentials': "false",
-						'Access-Control-Allow-Headers': "Content-Type,Range,User-Agent,X-Requested-With",
-						'Access-Control-Allow-Methods': "GET, HEAD, OPTIONS",
-						//'Access-Control-Expose-Headers': "Content-Length,Content-Range,X-Chunked-Output,X-Stream-Output",
-						'Clear-Site-Data': "cookies",
-						'Content-Security-Policy': "frame-ancestors 'self'",
-						'Cross-Origin-Resource-Policy': "cross-origin",
-						'Permissions-Policy': "interest-cohort=()",
-						'Referrer-Policy': "strict-origin-when-cross-origin",
-						'Strict-Transport-Security': "max-age=31536000; includeSubDomains; preload",
-						'X-Content-Type-Options': "nosniff",
-						'X-Frame-Options': "SAMEORIGIN",
-						'X-True-Host': `${_domain}.casa`,
-						'X-Xss-Protection': "1; mode=block"
-					}
-				}), PAGE_CACHE);
+			//if (result) {
+			const res = result.split("://")
+			let gateway = ""// TODO: set default profile here, or at default
+			switch (res[0]) {
+				case "ipfs":
+					gateway = `https://ipfs.io/ipfs/${res[1]}`
+					break
+				case "ipns":
+					gateway = `https://ipfs.io/ipns/${res[1]}`
+					break
+				case "ar":
+					gateway = `https://arweave.net/${res[1]}`
+					break
+				case "shdw":
+					gateway = `https://shdw-drive.genesysgo.net/${res[1]}`
+					break
+				default:
+					return Response.redirect(result, 307)
 			}
-			return Response.redirect(`https://www.sns.id/domain?domain=${_domain.split(".")[0]}`, 307)
+			response = await fetch(`${gateway}${url.pathname}${url.search}`, {
+				cf: {
+					cacheTtl: HOME_CACHE * 2,
+					cacheEverything: true,
+				},
+			});
+			if (response.status !== 200) {
+				return cachedOutput(cacheKey, Response.json({ error: response.status }, { status: response.status }), ERROR_CACHE)
+			}
+			return cachedOutput(cacheKey, new Response(response.body, {
+				headers: { // Thanks to eth.limo for proper headers
+					'Content-Type': response.headers.get('Content-Type'),
+					'Access-Control-Allow-Credentials': "false",
+					'Access-Control-Allow-Headers': "Content-Type,Range,User-Agent,X-Requested-With",
+					'Access-Control-Allow-Methods': "GET, HEAD, OPTIONS",
+					//'Access-Control-Expose-Headers': "Content-Length,Content-Range,X-Chunked-Output,X-Stream-Output",
+					'Clear-Site-Data': "cookies",
+					'Content-Security-Policy': "frame-ancestors 'self'",
+					'Cross-Origin-Resource-Policy': "cross-origin",
+					'Permissions-Policy': "interest-cohort=()",
+					'Referrer-Policy': "strict-origin-when-cross-origin",
+					'Strict-Transport-Security': "max-age=31536000; includeSubDomains; preload",
+					'X-Content-Type-Options': "nosniff",
+					'X-Frame-Options': "SAMEORIGIN",
+					'X-True-Host': `${_domain}.casa`,
+					'X-Xss-Protection': "1; mode=block"
+				}
+			}), PAGE_CACHE);
+			//}
+			//return Response.redirect(`https://www.sns.id/domain?domain=${_domain.split(".")[0]}`, 307)
 		}
 		return cachedOutput(cacheKey, Response.json({ error: 'Record Not Found' }, { status: 404 }), ERROR_CACHE)
 	}
