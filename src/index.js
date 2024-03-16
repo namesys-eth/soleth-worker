@@ -1,5 +1,5 @@
 import { privateKeyToAccount } from 'viem/accounts';
-import { randomRPC, setKV, getKV, signRecord, getRecord, recordMap, getContent } from './utils';
+import { randomRPC, setKV, getKV, domainRegd, getRecord, recordMap, getContent } from './utils';
 import { getCoderByCoinName } from '@ensdomains/address-encoder';
 import { hexToBytes } from '@ensdomains/address-encoder/utils';
 import { getAddress as toChecksumAddr, toHex } from 'viem';
@@ -15,8 +15,8 @@ const ERROR_CACHE = 12;
 const PAGE_CACHE = 12;
 const DATA_CACHE = 12;
 
-// cache timer for error 404
-const X404_CACHE = 13;
+// cache ttl for error 404
+const CACHE_404 = 13;
 
 const cache = caches.default;
 const utf8Encoder = new TextEncoder();
@@ -61,6 +61,10 @@ export default {
 				if (rec === 'address' && recType) {
 					_path.pop();
 					_domain = _path.reverse().join('.');
+					//const regd = await domainRegd(env, domain, ttl)
+					//if (!regd) {
+					//	return await setKV(env.SOLCASA, key, false, ttl);
+					//}
 					data = await getRecord(env, _domain, recType, 15);
 					if (data) {
 						// format & sign here
@@ -85,10 +89,10 @@ export default {
 					return cachedOutput(cacheKey, response, DATA_CACHE);
 				}
 				response = Response.json({ error: `Record Type "${rec}/${_type}" Not Found` }, { status: 404 });
-				return cachedOutput(cacheKey, response, X404_CACHE);
+				return cachedOutput(cacheKey, response, CACHE_404);
 			}
 			response = Response.json({ error: `Record Type "${_type}" Not Found` }, { status: 404 });
-			return cachedOutput(cacheKey, response, X404_CACHE);
+			return cachedOutput(cacheKey, response, CACHE_404);
 		}
 		const hostLen = url.hostname.split('.').length;
 		if (hostLen < 3) {
@@ -115,16 +119,13 @@ export default {
 		}
 		if (hostLen === 3) {
 			const _domain = url.hostname.split(".").slice(0, 2).join(".")
-			const result = await getContent(env, _domain, HOME_CACHE);
-			//if (result) {
+			const result = await getContent(env, _domain);
 			const res = result.split("://")
 			let gateway = ""// TODO: set default profile here, or at default
 			switch (res[0]) {
 				case "ipfs":
-					gateway = `https://ipfs.io/ipfs/${res[1]}`
-					break
 				case "ipns":
-					gateway = `https://ipfs.io/ipns/${res[1]}`
+					gateway = `https://ipfs.io/${res[0]}/${res[1]}`
 					break
 				case "ar":
 					gateway = `https://arweave.net/${res[1]}`
@@ -137,7 +138,7 @@ export default {
 			}
 			response = await fetch(`${gateway}${url.pathname}${url.search}`, {
 				cf: {
-					cacheTtl: HOME_CACHE * 2,
+					cacheTtl: env.CONTENT_TTL * 2,
 					cacheEverything: true,
 				},
 			});
@@ -151,7 +152,7 @@ export default {
 					'Access-Control-Allow-Headers': "Content-Type,Range,User-Agent,X-Requested-With",
 					'Access-Control-Allow-Methods': "GET, HEAD, OPTIONS",
 					//'Access-Control-Expose-Headers': "Content-Length,Content-Range,X-Chunked-Output,X-Stream-Output",
-					'Clear-Site-Data': "cookies",
+					'Clear-Site-Data': "\"cookies\"",
 					'Content-Security-Policy': "frame-ancestors 'self'",
 					'Cross-Origin-Resource-Policy': "cross-origin",
 					'Permissions-Policy': "interest-cohort=()",

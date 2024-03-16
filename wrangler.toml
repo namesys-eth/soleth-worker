@@ -1,10 +1,16 @@
 name = "sol_casa"
 main = "src/index.js"
 compatibility_date = "2024-02-23"
-#node_compat = true
+node_compat = true
 kv_namespaces = [
     { binding = "SOLCASA", id = "417044f58c0b45f995250d93e43394d5" },
 ]
 
 [limits]
-cpu_ms = 5000
+cpu_ms = 11111
+
+[vars]
+CONTENT_TTL = "300"
+DOMAIN_TTL = "86400"
+RECORD_TTL = "300"
+RESOLVER = "0x8fd379246834eac74B8419FfdA202CF8051F7A03"
